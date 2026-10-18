@@ -1,0 +1,40 @@
+name: RDP Windows Server 2025
+
+on: workflow_dispatch
+
+jobs:
+  rdp:
+    runs-on: windows-2025
+    timeout-minutes: 360
+    steps:
+      - name: Enable RDP 3389 + random password
+        shell: pwsh
+        run: |
+          Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name fDenyTSConnections -Value 0
+          New-NetFirewallRule -DisplayName "RDP 3389" -Direction Inbound -Protocol TCP -LocalPort 3389 -Action Allow
+
+          $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#%^*-_'
+          $rand  = -join (1..20 | ForEach-Object { $chars[[Security.Cryptography.RandomNumberGenerator]::GetInt32($chars.Length)] })
+          $pw    = "Aa1!$rand"
+          Set-LocalUser -Name runneradmin -Password (ConvertTo-SecureString $pw -AsPlainText -Force)
+          "RDP_PW=$pw" >> $env:GITHUB_ENV
+
+      - name: Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}   # đọc từ repo secret
+          hostname: gh-win2025
+
+      - name: Show connection info
+        shell: pwsh
+        run: |
+          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          Write-Output "=============================="
+          Write-Output " Host     : $ip (gh-win2025)"
+          Write-Output " User     : runneradmin"
+          Write-Output " Password : $env:RDP_PW"
+          Write-Output "=============================="
+
+      - name: Keep alive
+        shell: pwsh
+        run: while ($true) { Start-Sleep 60 }
